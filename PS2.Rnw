@@ -1,0 +1,222 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+<<import packages, results='hide', echo=TRUE, warning =FALSE>>=
+library(foreign)
+library(glm2)
+library(xtable)
+library(dagR)
+@
+
+\begin{document}
+\section*{Question 1}
+
+<<read in the data, results='asis', echo=TRUE, warning =FALSE>>=
+jtrain = read.dta("/home/paul/Dokumente/ImpactEvaluation/jtrain2.dta")
+@
+
+
+\subsection*{b}
+In order to compute the ATE I compare the conditional means of unem78 with respect to train.
+$E[unem78|train =1]-E[unem78|train =0] =$ \Sexpr{with(jtrain, mean(unem78[as.logical(train)])- mean(unem78[!as.logical(train)]))} \\
+
+\subsection*{c}
+In order to get the marginal effects I run the following OLS Regression.
+\[
+unem78 = \beta_0 +\beta_1 * train
+\]
+This gives me a marginal effect of \Sexpr{lm(unem78~train, data=jtrain)$coeff[2]}
+For the corresponding probit model the mean marginal effect is: 
+<<ate probit, echo=TRUE>>=
+probit1 = glm(unem78~train,  family = binomial(link = "probit") , data=jtrain)
+margin = mean(probit1$fitted[probit1$data$train>0])-mean(probit1$fitted[probit1$data$train<=0])
+@
+
+\Sexpr{margin}
+
+\subsection*{d}
+
+\textbf{Average treatment effect for black and white people}\\
+$\alpha_ATE(black = 1) =$ \Sexpr{with(jtrain[jtrain$black==1,], mean(unem78[as.logical(train)])- mean(unem78[!as.logical(train)]))} \\
+$\alpha_ATE(black = 0) =$ \Sexpr{with(jtrain[jtrain$black==0,], mean(unem78[as.logical(train)])- mean(unem78[!as.logical(train)]))} \\[0.5cm]
+\textbf{Fractions of black and white people in the sample}\\
+$Pr(black=1) = $ \Sexpr{with(jtrain, mean(as.logical(black)))}
+$Pr(black=0) = $ \Sexpr{with(jtrain, mean(!as.logical(black)))}\\[0.5cm]
+\textbf{Relative contribution to ATE}\\
+$\frac{\alpha_ATE(black = 1)* Pr(black=1)}{\alpha_ATE}=$\Sexpr{(with(jtrain[jtrain$black==1,], mean(unem78[as.logical(train)])- mean(unem78[!as.logical(train)]))*with(jtrain, mean(as.logical(black))))/(margin)} \\
+$\frac{\alpha_ATE(black = 0)* Pr(black=0)}{\alpha_ATE}=$\Sexpr{(with(jtrain[jtrain$black==0,], mean(unem78[as.logical(train)])- mean(unem78[!as.logical(train)]))*with(jtrain, mean(!as.logical(black))))/(margin)} \\
+\paragraph{The causal graph is:}
+\input{graph1.pdf_tex}\pagebreak
+
+The treatment has a higher effect on black people than on white people. One possible reason for this could be that being black negatively influences employment and therefor the fraction of treated people which were initially unemployed is higher in the black population. Since the treatment is more likely to help if people actually have a problem, job training had an higher effect on black people.
+\section*{Question 2}
+\subsection*{a}
+<<a, echo=TRUE>>=
+newtrain = jtrain[!with(jtrain, (train==1)&(black==0)),]
+@
+
+The distribution of black and train in the new table is:
+
+<<table, results='asis', echo=TRUE>>=
+xtable(with(newtrain, table(train, black)))
+@
+\section*{b}
+The expression for the difference in means estimator is:\\
+$E[unemp^1|train=1]-E[unemp^0|train=0]=E[unemp^1|train=1]-E[unemp^0|train=1]+E[unemp^0|train=1]-E[unemp^0|train=0]$\\
+Where the selection bias is: $E[unemp^0|train=1]-E[unemp^0|train=0]$
+Where $E[unemp^0|train=1]$ is the mean unemployment for black people and $E[unemp^0|train=0]$ is mean the mean unemployment for a population with a very high fraction of white people. Since black people are more likely to be unemployed, the difference in mean estimator is biased.
+\section*{c}
+The table below reports bis true ATE and the biased Estimate.
+<<compute bias, echo=TRUE, results='asis'>>=
+trueATE = margin
+biasedDiffinDiff = lm(unem78~train, data=newtrain)$coeff[2]
+bias = trueATE - biasedDiffinDiff
+estimate = c(trueATE, biasedDiffinDiff, bias)
+names(estimate) = c("trueATE", "biasedDiffinDiff", "bias")
+xtable(as.matrix(estimate))
+@
+
+\section*{d}
+In order to get a consistent estimate for the ATE we have to condition on black.
+
+<<consistent estimate, echo=TRUE>>=
+trueATE = lm(unem78~train+black, data=newtrain)$coeff[2]
+
+@
+
+The consistent estimate is : \Sexpr{trueATE}
+
+\section*{Question 3}
+\subsection*{a.i}
+The theoretical marginal effect of $X_1$ on $D_1$ is given by 
+\begin{align*}
+E(D_1|X=1)-E(D_1|X=0) &= E(1(1+U_1>0))-E(1(0+U_1>0))\\ &= Pr(1+U_1>0)-Pr(0+U_1>0)\\
+&=1-0.5 = 0.5
+\end{align*}
+
+
+For the regression of $Y_1$ on $X_1$ the coefficient is 1, as we can see from the equation.
+<<Question 1. i calculations, results='hide', echo=TRUE>>=
+sim1 = read.dta("/home/paul/Dokumente/ImpactEvaluation/sim1.dta")
+
+#true vs estimated coefficients D1~X1
+reg1 = glm(D1~X1, family = binomial(link = "probit") , data = sim1)
+coeff1hat = mean(reg1$fitted[reg1$data$X1>0])-mean(reg1$fitted[reg1$data$X1<=0])
+coeff1 = 0.5
+
+#true vs estimated coefficients Y1~X1
+reg2 = lm(Y1~X1, data = sim1 )
+coeff2hat = reg2$coefficients[2]
+coeff2 = 1
+
+output1ai = matrix(cbind(coeff1hat, coeff1, coeff2hat, coeff2),2,2, byrow = FALSE)
+colnames(output1ai)= c("D1 on X1", "Y1 on X1")
+rownames(output1ai)= c("estimated", "true")
+
+@
+
+<<Questin 1. i results, results='asis', echo=TRUE>>=
+xtable(output1ai)
+@
+
+\subsection*{a.ii}
+
+$D_1$ does not depend on $Y_1$. From the table below you can see tha this is estimated correctly if you condition on $X_1$
+<<Question 1. ii calculations, results='hide', echo=TRUE>>=
+unconditioned = lm(Y1~D1, data=sim1)$coefficients[2]
+conditionOnX1 = lm(Y1~D1+X1, data=sim1)$coefficients[2]
+output1aii= cbind(unconditioned, conditionOnX1)
+rownames(output1aii) = c("coefficient")
+@
+
+<<Questin 1. ii results, results='asis', echo=TRUE>>=
+xtable(output1aii)
+@
+
+
+
+\subsection*{a.iii}
+$D_2$ has an effect on $Y_2$. As you can see from the regression coeffcients reported below this dissappears if you condition on $X_2$
+<<Question 1. iii calculations, results='hide', echo=TRUE>>=
+unconditioned = lm(Y2~D2, data=sim1)$coefficients[2]
+conditionOnX2 = lm(Y2~D2+X2, data=sim1)$coefficients[2]
+output1aiii= cbind(unconditioned, conditionOnX2)
+rownames(output1aiii) = c("coefficient")
+@
+
+<<Questin 1. iii results, results='asis', echo=TRUE>>=
+xtable(output1aiii)
+@
+\pagebreak
+\subsection*{b.}
+If both direct and indirect effects are positive and equal to one, the regression results reported in the table below are consistent with the causal graph.
+<<Question 1. b calculations, results='hide', echo=TRUE>>=
+sim2 = read.dta("/home/paul/Dokumente/ImpactEvaluation/sim2.dta")
+
+
+
+unconditioned = lm(Y~D, data=sim2)$coefficients[2]
+conditionOnX = lm(Y~D+X, data=sim2)$coefficients[2]
+output1b= cbind(unconditioned, conditionOnX)
+rownames(output1b) = c("coefficient")
+@
+
+<<Question 1. b results, results='asis', echo=TRUE>>=
+xtable(output1b)
+@
+
+\subsection*{c.}
+
+\subsection*{ci.}
+<<Simulate Observation ci, results = "hide", echo=TRUE>>=
+obs = 10000
+U1 = rnorm(obs, mean= 0, sd=1)
+U2 = rnorm(obs, mean= 0, sd=1)
+U3 = rnorm(obs, mean= 0, sd=1)
+X=U3
+D =X+ U1>0
+Y=X+U2+D
+
+@
+Since X is positively correlated with D and Y the effect of D on y is over-estimated if we do not condition on X.
+
+<<Question 1. c icalculations, results='hide', echo=TRUE>>=
+unconditioned = lm(Y~D)$coefficients[2]
+conditionOnX = lm(Y~D+X)$coefficients[2]
+output1c= cbind(unconditioned, conditionOnX)
+rownames(output1c) = c("coefficient")
+@
+
+
+<<Question 1.i c results, results='asis', echo=TRUE>>=
+xtable(output1c)
+@
+
+\subsection*{cii}
+<<Simulate Observation cii , results = "hide", echo=TRUE>>=
+obs = 10000
+U1 = rnorm(obs, mean= 0, sd=1)
+U2 = rnorm(obs, mean= 0, sd=1)
+U3 = rnorm(obs, mean= 0, sd=1)
+D = U1>0
+Y=U2
+X=D+U3+Y
+
+@
+The Regression Results below show a spurious effect of D on Y of -0.5. If we de not condition the effect is correctly identified.
+
+<<Question 1. cii icalculations, results='hide', echo=TRUE>>=
+unconditioned = lm(Y~D)$coefficients[2]
+conditionOnX = lm(Y~D+X)$coefficients[2]
+output1cii= cbind(unconditioned, conditionOnX)
+rownames(output1cii) = c("coefficient")
+@
+
+
+<<Question 1. cii results, results='asis', echo=TRUE>>=
+xtable(output1cii)
+@
+
+
+\end{document}
